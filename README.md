@@ -34,9 +34,29 @@ Open the `https://...` URL on your phone.
 
 Open `colab.ipynb` in Google Colab and run the cells. It installs dependencies, starts the server, and prints an HTTPS ngrok URL.
 
+Colab one‑cell (quick run):
+
+```python
+!git clone https://github.com/black1000u-blip/imagegpt-ocr.git
+%cd imagegpt-ocr
+!pip -q install -r backend/requirements.txt
+
+import threading, uvicorn
+threading.Thread(
+    target=lambda: uvicorn.run("backend.app:app", host="0.0.0.0", port=3001, log_level="info"),
+    daemon=True,
+).start()
+
+from pyngrok import ngrok
+import os
+token = os.environ.get("NGROK_AUTHTOKEN", "").strip()
+if token and token != "YOUR_TOKEN_HERE":
+    ngrok.set_auth_token(token)
+print("Open this on your phone:", ngrok.connect(3001, "http").public_url)
+```
+
 ## Tips (phone)
 
 - Use **Zoom** (bottom bar) to zoom before capture (hardware zoom if your device supports it).
 - Use **Brightness** to help readability; capture also applies automatic text enhancement.
 - Tap the captured image to open it and pinch-to-zoom.
-
