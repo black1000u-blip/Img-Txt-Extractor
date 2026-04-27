@@ -1,0 +1,260 @@
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+  background: #0f0f10;
+  color: #e8e8e8;
+}
+
+.topbar {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  height: 52px;
+  display: flex;
+  align-items: center;
+  padding: 0 14px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(15, 15, 16, 0.9);
+  backdrop-filter: blur(8px);
+}
+
+.brand {
+  font-weight: 600;
+  letter-spacing: 0.2px;
+}
+
+button {
+  padding: 10px 12px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: #1b1b1d;
+  color: #e8e8e8;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+button:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.main {
+  max-width: 860px;
+  margin: 0 auto;
+  padding: 14px 12px calc(110px + env(safe-area-inset-bottom));
+}
+
+.hidden {
+  display: none;
+}
+
+.camera.active {
+  position: fixed;
+  left: 12px;
+  right: 12px;
+  top: 64px;
+  bottom: calc(110px + env(safe-area-inset-bottom));
+  z-index: 9;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 12px;
+  background: rgba(0, 0, 0, 0.55);
+  border-radius: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.camera.active .videoWrap {
+  max-height: 100%;
+  max-width: 100%;
+}
+
+.videoWrap {
+  width: 100%;
+  border-radius: 12px;
+  overflow: hidden;
+  background: #000;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.camera video {
+  width: 100%;
+  display: block;
+  transform-origin: center center;
+}
+
+.results {
+  margin-top: 14px;
+}
+
+.item {
+  display: grid;
+  gap: 10px;
+  margin: 14px 0;
+}
+
+.bubble {
+  width: fit-content;
+  max-width: 100%;
+  border-radius: 14px;
+  padding: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: #161618;
+}
+
+.bubble.user {
+  justify-self: end;
+  background: #1b1b1d;
+}
+
+.bubble.assistant {
+  justify-self: start;
+  background: #121214;
+}
+
+.photo {
+  width: 220px;
+  max-width: min(70vw, 320px);
+  border-radius: 12px;
+  display: block;
+  cursor: zoom-in;
+}
+
+.assistantRow {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 8px;
+  align-items: start;
+}
+
+.question {
+  flex: 1;
+  margin: 0;
+  padding: 10px;
+  background: #0f0f10;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 10px;
+  white-space: pre-wrap;
+}
+
+.copyBtn {
+  white-space: nowrap;
+}
+
+.bottombar {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 10;
+  padding: 10px 12px calc(10px + env(safe-area-inset-bottom));
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(15, 15, 16, 0.9);
+  backdrop-filter: blur(8px);
+}
+
+.controls {
+  max-width: 860px;
+  margin: 0 auto;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.rangeLabel {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: #1b1b1d;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  font-size: 13px;
+  color: rgba(232, 232, 232, 0.9);
+}
+
+.rangeLabel input {
+  width: 140px;
+}
+
+.status {
+  max-width: 860px;
+  margin: 8px auto 0;
+  min-height: 18px;
+  color: rgba(232, 232, 232, 0.75);
+  font-size: 13px;
+}
+
+.imgDialog {
+  border: none;
+  padding: 0;
+  background: transparent;
+}
+
+.imgDialog::backdrop {
+  background: rgba(0, 0, 0, 0.6);
+}
+
+.imgDialogInner {
+  width: min(980px, 96vw);
+  max-height: 92vh;
+  margin: 0 auto;
+  border-radius: 14px;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: #101012;
+}
+
+.imgDialogBar {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 12px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.imgDialogLabel {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  font-size: 13px;
+  color: rgba(232, 232, 232, 0.9);
+}
+
+.imgDialogLabel input {
+  width: 160px;
+}
+
+.closeBtn {
+  padding: 8px 10px;
+}
+
+.imgDialogBody {
+  overflow: auto;
+  max-height: calc(92vh - 46px);
+  padding: 10px;
+  touch-action: none;
+}
+
+.imgDialogBody img {
+  display: block;
+  width: 100%;
+  border-radius: 12px;
+}
+
+@media (max-width: 520px) {
+  .assistantRow {
+    grid-template-columns: 1fr;
+  }
+  .copyBtn {
+    width: 100%;
+  }
+  .rangeLabel input {
+    width: 120px;
+  }
+}

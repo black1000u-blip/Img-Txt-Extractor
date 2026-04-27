@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>ImageGPT</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <div class="brand">ImageGPT</div>
+    </header>
+
+    <main class="main" id="main">
+      <section id="camera" class="camera hidden">
+        <div class="videoWrap">
+          <video id="video" autoplay playsinline></video>
+        </div>
+      </section>
+
+      <section id="results" class="results"></section>
+    </main>
+
+      <template id="resultTpl">
+        <section class="item">
+          <div class="bubble user">
+            <img class="photo" alt="Captured" />
+          </div>
+          <div class="bubble assistant">
+            <div class="assistantRow">
+              <pre class="question"></pre>
+              <button class="copyBtn" disabled>Copy</button>
+            </div>
+          </div>
+        </section>
+      </template>
+
+      <dialog id="imgDialog" class="imgDialog">
+        <div class="imgDialogInner">
+          <div class="imgDialogBar">
+            <label class="imgDialogLabel"
+              >Zoom
+              <input id="zoomRange" type="range" min="1" max="3" step="0.1" value="1" />
+            </label>
+            <button id="closeDialogBtn" class="closeBtn" type="button">Close</button>
+          </div>
+          <div class="imgDialogBody">
+            <img id="imgDialogImg" alt="Captured preview" />
+          </div>
+        </div>
+      </dialog>
+
+    <footer class="bottombar">
+      <div class="controls">
+        <button id="startBtn" type="button">Start Camera</button>
+        <button id="captureBtn" type="button" disabled>Capture</button>
+        <label class="rangeLabel"
+          >Zoom
+          <input id="captureZoomRange" type="range" min="1" max="3" step="0.1" value="1" />
+        </label>
+        <label class="rangeLabel"
+          >Brightness
+          <input id="brightRange" type="range" min="0.6" max="1.8" step="0.05" value="1" />
+        </label>
+      </div>
+      <div id="status" class="status"></div>
+    </footer>
+
+    <script src="./app.js"></script>
+  </body>
+</html>
