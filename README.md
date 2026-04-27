@@ -37,8 +37,10 @@ Open `colab.ipynb` in Google Colab and run the cells. It installs dependencies, 
 Colab one‑cell (quick run):
 
 ```python
+!rm -rf imagegpt-ocr
 !git clone https://github.com/black1000u-blip/imagegpt-ocr.git
 %cd imagegpt-ocr
+
 !pip -q install -r backend/requirements.txt
 
 import threading, uvicorn
@@ -50,9 +52,19 @@ threading.Thread(
 from pyngrok import ngrok
 import os
 token = os.environ.get("NGROK_AUTHTOKEN", "").strip()
-if token and token != "YOUR_TOKEN_HERE":
+if token == "YOUR_TOKEN_HERE":
+    token = ""
+    os.environ.pop("NGROK_AUTHTOKEN", None)
+if token:
     ngrok.set_auth_token(token)
 print("Open this on your phone:", ngrok.connect(3001, "http").public_url)
+```
+
+If ngrok errors and asks for auth: set a real token (from your ngrok dashboard) and rerun:
+
+```python
+import os
+os.environ["NGROK_AUTHTOKEN"] = "PASTE_REAL_TOKEN_HERE"
 ```
 
 ## Tips (phone)
