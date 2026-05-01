@@ -3,7 +3,7 @@ import io
 import os
 import re
 import traceback
-from typing import Any, List, Tuple
+from typing import Any, List, Tuple, Optional
 
 import numpy as np
 from fastapi import FastAPI
@@ -15,6 +15,21 @@ from PIL import Image, ImageEnhance, ImageOps
 from starlette.concurrency import run_in_threadpool
 
 _ocr = None
+
+# ── Keyboard / UI noise patterns to discard ───────────────────────────────
+_NOISE = re.compile(
+    r"^("
+    r"F\d{1,2}"                          # F1-F12
+    r"|Pause|Scr[lL]k?|Prtsc?|Prise"    # keyboard labels
+    r"|Ins|Del|Home|End|PgUp|PgDn"
+    r"|NumLk|SysRq|Break|CapsLock"
+    r"|Shift|Ctrl|Alt|Tab|Esc|Enter"
+    r"|RF|[A-Z]{1,3}\d*"                 # random short keys like RF, K, U
+    r")\s*$",
+    re.IGNORECASE,
+)
+
+_BROWSER_URL = re.compile(r"https?://|www\.", re.IGNORECASE)
 
 
 def get_ocr():
@@ -46,15 +61,13 @@ def enhance_for_text(img: Image.Image) -> Image.Image:
 
 
 def ocr_lines(img: Image.Image) -> Tuple[List[Tuple[float, float, float, str, float]], int, int]:
-    """Returns (lines, img_w, img_h). lines: (y, x, h, text, score)."""
     img_w, img_h = img.size
     arr = np.array(img)
     raw = get_ocr().ocr(arr, cls=True) or []
 
     def is_line_item(x: Any) -> bool:
         return (
-            isinstance(x, list)
-            and len(x) == 2
+            isinstance(x, list) and len(x) == 2
             and isinstance(x[0], list)
             and isinstance(x[1], (list, tuple))
             and len(x[1]) >= 1
@@ -79,61 +92,72 @@ def ocr_lines(img: Image.Image) -> Tuple[List[Tuple[float, float, float, str, fl
             continue
         xs = [p[0] for p in box]
         ys = [p[1] for p in box]
-        x = float(min(xs))
-        y = float(min(ys))
-        h = float(max(ys) - min(ys))
-        lines.append((y, x, h, text, score))
+        lines.append((float(min(ys)), float(min(xs)), float(max(ys) - min(ys)), text, score))
 
     lines.sort(key=lambda t: (t[0], t[1]))
     return lines, img_w, img_h
 
 
-def filter_to_main_content(
+def remove_noise(
+    lines: List[Tuple[float, float, float, str, float]]
+) -> List[Tuple[float, float, float, str, float]]:
+    """Drop keyboard keys, URLs, single-char garbage, very short tokens."""
+    clean = []
+    for y, x, h, text, score in lines:
+        t = text.strip()
+        if len(t) <= 1:
+            continue
+        if _NOISE.match(t):
+            continue
+        if _BROWSER_URL.search(t):
+            continue
+        clean.append((y, x, h, text, score))
+    return clean
+
+
+def remove_sidebars(
     lines: List[Tuple[float, float, float, str, float]],
     img_w: int,
     img_h: int,
 ) -> List[Tuple[float, float, float, str, float]]:
     """
-    Removes left sidebar (navigation) and right sidebar text.
-    Anchors the content region using question-1 marker and option lines.
+    Crop left and right sidebars using the first question-number line as
+    the left anchor. For landscape images also crop the right sidebar zone.
     """
     if not lines or img_w == 0:
         return lines
 
-    # --- Find left boundary using "1." or "1)" anchor ---
+    # Find left anchor: first line that looks like a question number "N." or "N)"
     left_bound = None
     for y, x, h, text, score in lines:
-        if re.match(r"^\s*1\s*[.)]\s*\S", text):
-            left_bound = max(0.0, x - img_w * 0.03)
+        if re.match(r"^\s*\d+\s*[.)]\s*\S", text):
+            left_bound = max(0.0, x - img_w * 0.04)
             break
 
-    # Fallback: use first A) option x-position
+    # Fallback: first option line A)
     if left_bound is None:
         for y, x, h, text, score in lines:
             if re.match(r"^\s*[A-D]\)\s*\S", text):
-                left_bound = max(0.0, x - img_w * 0.03)
+                left_bound = max(0.0, x - img_w * 0.04)
                 break
 
-    # Final fallback: 12% from left
     if left_bound is None:
-        left_bound = img_w * 0.12
+        left_bound = img_w * 0.10   # generic 10% trim
 
-    # --- Find right boundary ---
-    # For landscape images, right sidebar typically starts at ~70% of width
-    if img_w > img_h:
-        right_bound = img_w * 0.72
-    else:
-        right_bound = float(img_w)
+    # Right boundary: landscape images usually have a right sidebar
+    right_bound = img_w * 0.72 if img_w > img_h else float(img_w)
 
     filtered = [
-        (y, x, h, text, score)
-        for y, x, h, text, score in lines
-        if x >= left_bound and x <= right_bound
+        item for item in lines
+        if item[1] >= left_bound and item[1] <= right_bound
     ]
     return filtered if filtered else lines
 
 
-def merge_lines(lines: List[Tuple[float, float, float, str, float]]) -> List[str]:
+def merge_into_text_lines(
+    lines: List[Tuple[float, float, float, str, float]]
+) -> List[str]:
+    """Group nearby y-rows into single text lines, sorted left-to-right."""
     if not lines:
         return []
 
@@ -141,110 +165,133 @@ def merge_lines(lines: List[Tuple[float, float, float, str, float]]) -> List[str
     median_h = heights[len(heights) // 2] if heights else 16.0
     threshold = max(8.0, median_h * 0.6)
 
-    merged: List[List[Tuple[float, float, str]]] = []
+    groups: List[List[Tuple[float, float, str]]] = []
     cur: List[Tuple[float, float, str]] = []
-    cur_y = None
+    cur_y: Optional[float] = None
 
-    for y, x, h, text, _score in lines:
+    for y, x, h, text, _ in lines:
         if cur_y is None or abs(y - cur_y) <= threshold:
             cur.append((y, x, text))
-            cur_y = y if cur_y is None else (cur_y * 0.7 + y * 0.3)
-            continue
-        merged.append(cur)
-        cur = [(y, x, text)]
-        cur_y = y
+            cur_y = y if cur_y is None else cur_y * 0.7 + y * 0.3
+        else:
+            groups.append(cur)
+            cur = [(y, x, text)]
+            cur_y = y
 
     if cur:
-        merged.append(cur)
+        groups.append(cur)
 
-    out = []
-    for group in merged:
-        group.sort(key=lambda t: t[1])
-        out.append(" ".join([t[2] for t in group]).strip())
-    return [s for s in out if s]
+    result = []
+    for g in groups:
+        g.sort(key=lambda t: t[1])
+        result.append(" ".join(t[2] for t in g).strip())
+    return [s for s in result if s]
 
 
-def format_options_each_line(text: str) -> str:
-    t = (text or "").strip()
+def format_clean_output(text: str) -> str:
+    """
+    Strip question number prefix, then format options A-D each on its own line.
+    """
+    t = text.strip()
     if not t:
         return ""
 
-    # Strip leading question number  e.g. "1." or "1)"
+    # Remove leading question number like "2." / "3)" / "Q2."
     t = re.sub(r"^\s*[Qq]?\s*\d+\s*[.)]\s*", "", t).strip()
 
-    first_opt = re.search(r"\bA\)\s*", t)
-    if not first_opt:
+    # Find first option marker
+    m = re.search(r"\bA\)\s*", t)
+    if not m:
         return t
 
-    q = t[: first_opt.start()].strip().rstrip("-•").strip()
-    opts = t[first_opt.start():].strip()
-    opts = re.sub(r"^[-•]\s*", "", opts)
-    opts = re.sub(r"\s*[-•]?\s*\b([A-D])\)\s*", r"\n\1) ", opts)
-    opts = "\n".join([line.strip() for line in opts.splitlines() if line.strip()])
-    return "\n".join([p for p in [q, opts] if p])
+    question = t[: m.start()].strip().rstrip("-•").strip()
+    opts_raw = t[m.start():]
+    # Split on A) B) C) D) boundaries
+    opts_raw = re.sub(r"\s*\b([A-D])\)\s*", r"\n\1) ", opts_raw)
+    opts_lines = [ln.strip() for ln in opts_raw.splitlines() if ln.strip()]
+    opts = "\n".join(opts_lines)
+
+    parts = [p for p in [question, opts] if p]
+    return "\n".join(parts)
 
 
-def extract_first_question(text_lines: List[str]) -> str:
+def extract_top_question(text_lines: List[str]) -> str:
+    """
+    Find the FIRST (topmost) question visible — any question number.
+    Collect it and its A-D options. Stop at the next question or after D).
+    """
     if not text_lines:
         return ""
 
-    # --- Find where Question 1 starts ---
-    q1_idx = None
+    # ── Step 1: find the topmost question number line ─────────────────────
+    q_idx = None
+    q_num = None
     for i, line in enumerate(text_lines):
-        if re.match(r"^\s*1\s*[.)]\s*\S", line):
-            q1_idx = i
+        m = re.match(r"^\s*(\d+)\s*[.)]\s*\S", line)
+        if m:
+            q_idx = i
+            q_num = int(m.group(1))
             break
 
-    # Fallback: first line with A) option — back up 2 lines for question body
-    if q1_idx is None:
+    # Fallback A: a line that ends with "?" (question body without number)
+    if q_idx is None:
+        for i, line in enumerate(text_lines):
+            if re.search(r"\?\s*$", line) and len(line.strip()) > 20:
+                q_idx = i
+                break
+
+    # Fallback B: wherever A) first appears, back up 3 lines
+    if q_idx is None:
         for i, line in enumerate(text_lines):
             if re.search(r"\bA\)\s*\S", line):
-                q1_idx = max(0, i - 2)
+                q_idx = max(0, i - 3)
                 break
 
-    # Last fallback: first line with a question mark at end
-    if q1_idx is None:
-        for i, line in enumerate(text_lines):
-            if re.search(r"\?\s*$", line.strip()) and len(line.strip()) > 15:
-                q1_idx = i
-                break
+    if q_idx is None:
+        q_idx = 0
 
-    if q1_idx is None:
-        q1_idx = 0
+    next_q_pat = (
+        re.compile(rf"^\s*{q_num + 1}\s*[.)]\s*\S") if q_num is not None
+        else re.compile(r"^\s*\d+\s*[.)]\s*\S")
+    )
 
-    collected = []
-    seen_options: set = set()
+    # ── Step 2: collect lines for this question ───────────────────────────
+    collected: List[str] = []
+    seen_opts: set = set()
 
-    for i in range(q1_idx, len(text_lines)):
+    for i in range(q_idx, len(text_lines)):
         line = text_lines[i].strip()
         if not line:
             continue
 
-        # Stop when question 2 begins
-        if collected and re.match(r"^\s*2\s*[.)]\s*\S", line):
+        # Stop at the next question number
+        if collected and next_q_pat.match(line):
             break
 
-        # Stop at answer/solution marker
-        if collected and re.match(r"^\s*(Answer|Solution|Explanation|Ans)\s*[:.)]", line, re.I):
+        # Stop at answer/solution/explanation markers
+        if collected and re.match(
+            r"^\s*(Answer|Solution|Explanation|Ans)\s*[:.)]\s*", line, re.I
+        ):
             break
 
-        # Track options seen
+        # Track which options we've seen
         for opt in "ABCD":
             if re.search(rf"\b{opt}\)\s*\S", line):
-                seen_options.add(opt)
+                seen_opts.add(opt)
 
         collected.append(line)
 
-        # Stop once D) option is collected
-        if "D" in seen_options:
+        # Done once option D) is collected
+        if "D" in seen_opts:
             break
 
     if not collected:
         return ""
 
-    joined = "\n".join(collected) if len(collected) > 1 else collected[0]
-    return format_options_each_line(joined)
+    return format_clean_output("\n".join(collected))
 
+
+# ── FastAPI app ───────────────────────────────────────────────────────────
 
 class ExtractIn(BaseModel):
     image: str
@@ -266,17 +313,23 @@ async def extract(payload: ExtractIn) -> Any:
         img = decode_base64_image(payload.image)
         img = enhance_for_text(img)
         lines, img_w, img_h = ocr_lines(img)
-        lines = filter_to_main_content(lines, img_w, img_h)
-        merged = merge_lines(lines)
-        return extract_first_question(merged)
+        lines = remove_noise(lines)
+        lines = remove_sidebars(lines, img_w, img_h)
+        text_lines = merge_into_text_lines(lines)
+        return extract_top_question(text_lines)
 
     try:
         question = await run_in_threadpool(run)
         return {"question": question or ""}
     except Exception as e:
         details = "".join(traceback.format_exception_only(type(e), e)).strip()
-        return JSONResponse(status_code=500, content={"error": "OCR failed.", "details": details})
+        return JSONResponse(
+            status_code=500,
+            content={"error": "OCR failed.", "details": details},
+        )
 
 
-FRONTEND_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "frontend"))
+FRONTEND_DIR = os.path.abspath(
+    os.path.join(os.path.dirname(__file__), "..", "frontend")
+)
 app.mount("/", StaticFiles(directory=FRONTEND_DIR, html=True), name="static")
