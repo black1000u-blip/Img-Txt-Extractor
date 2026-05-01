@@ -5,3 +5,6 @@ numpy<2
 paddlepaddle
 paddleocr
 pyngrok
+langchain-text-splitters
+langchain-core
+langchain-community
