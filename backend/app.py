@@ -2,10 +2,12 @@ import base64
 import io
 import os
 import re
+import traceback
 from typing import Any, List, Tuple
 
 import numpy as np
 from fastapi import FastAPI
+from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
@@ -200,8 +202,12 @@ async def extract(payload: ExtractIn) -> Any:
     merged = merge_lines(lines)
     return extract_first_question(merged)
 
-  question = await run_in_threadpool(run)
-  return {"question": question or ""}
+  try:
+    question = await run_in_threadpool(run)
+    return {"question": question or ""}
+  except Exception as e:
+    details = "".join(traceback.format_exception_only(type(e), e)).strip()
+    return JSONResponse(status_code=500, content={"error": "OCR failed.", "details": details})
 
 
 FRONTEND_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "frontend"))

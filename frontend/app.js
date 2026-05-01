@@ -404,10 +404,10 @@ captureBtn.addEventListener("click", async () => {
       body: JSON.stringify({ image: base64 })
     });
 
-    const data = await res.json().catch(() => ({}));
+    const rawText = await res.text().catch(() => "");
+    const data = rawText ? JSON.parse(rawText) : {};
     if (!res.ok) {
-      const msg =
-        data?.details || data?.error || `Request failed (HTTP ${res.status}).`;
+      const msg = data?.details || data?.error || rawText || `Request failed (HTTP ${res.status}).`;
       throw new Error(msg);
     }
 
