@@ -22,7 +22,7 @@ let imageCapture = null;
 function setStatus(text) {
   statusEl.textContent = text || "";
 }
-
+// Hi
 function stopStream() {
   if (!stream) return;
   for (const track of stream.getTracks()) track.stop();
