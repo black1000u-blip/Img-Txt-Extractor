@@ -1,3 +1,24 @@
+# =============================================================================
+# backend/app.py  —  Img-Txt-Extractor
+# =============================================================================
+# FastAPI server that:
+#   1. Receives a base64-encoded image from the frontend
+#   2. Enhances it for better OCR (contrast, sharpness, auto-contrast)
+#   3. Runs PaddleOCR to get all text with bounding-box positions
+#   4. Removes noise  : keyboard keys (F1-F12, Pause, Scrlk …), URLs,
+#                       single-char tokens, random short uppercase blobs
+#   5. Removes sidebars: left nav-menu and right sidebar (IndiaBIX-style)
+#                        using the first visible question number as anchor
+#   6. Finds the TOPMOST visible question (any number, not hardcoded to "1.")
+#   7. Collects that question + options A B C D, stops at the next question
+#   8. Returns clean text: question on first line, each option on its own line
+#
+# Works with:
+#   - Screenshots (landscape) with left/right sidebars
+#   - Real camera photos of a screen (portrait), keyboards in frame, etc.
+#   - Any question number visible at the top of the image
+# =============================================================================
+
 import base64
 import io
 import os
